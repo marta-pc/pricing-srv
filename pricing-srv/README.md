@@ -46,7 +46,7 @@ The project follows a hexagonal architecture with three main layers:
 Project structure:
 
 ```text
-src/main/java/com/company/pricing
+src/main/java/com/company/pricing_srv
 |-- application
 |   `-- usecase
 |-- domain
@@ -70,9 +70,9 @@ Request flow:
 1. `PriceController` receives the HTTP request.
 2. A `PriceQuery` is created from the request parameters.
 3. `GetApplicablePriceService` executes the use case.
-4. `LoadPricesPort` retrieves candidate prices from persistence.
+4. `LoadPricesPort` retrieves candidate prices from persistence, filtering by product, brand and date range.
 5. `ApplicablePriceSelector` applies the business rule:
-   filter by date and select the highest priority row.
+   select the highest priority row among the candidates.
 6. The response is mapped to a REST DTO and returned.
 
 Main classes:
@@ -86,6 +86,17 @@ Main classes:
 - Persistence adapter:
   [PriceRepositoryAdapter.java](src/main/java/com/company/pricing_srv/infrastructure/out/persistence/adapter/PriceRepositoryAdapter.java)
 
+The domain logic is fully unit tested independently from infrastructure concerns.
+
+### Data Filtering Strategy
+
+Filtering responsibilities are split between layers:
+
+- The database narrows down candidate prices using product, brand and date range
+- The domain layer applies the business rule to resolve conflicts (priority selection)
+
+This approach keeps the business logic testable and independent from persistence concerns, while improving performance by reducing the amount of data loaded into memory.
+
 ## Business Rule
 
 The selection rule is:
@@ -93,6 +104,7 @@ The selection rule is:
 - A price row is applicable when `applicationDate` is between `startDate` and `endDate`
 - `startDate` and `endDate` are treated as inclusive
 - If more than one row is applicable, the row with the highest `priority` is returned
+- If multiple rows have the same priority, the most recent one (by `startDate`) is selected
 
 ## Dataset
 
@@ -101,7 +113,7 @@ The application boots with an in-memory dataset loaded from:
 - [schema.sql](src/main/resources/schema.sql)
 - [data.sql](src/main/resources/data.sql)
 
-The loaded sample contains 4 price rows for:
+The loaded sample contains multiple price rows, including overlapping scenarios to validate priority resolution.
 
 - `brandId = 1`
 - `productId = 35455`
@@ -135,6 +147,8 @@ Example response:
 ```
 
 If no applicable price exists, the service returns `404 Not Found`.
+
+Invalid requests return `400 Bad Request` with a structured error response.
 
 ## How To Run
 
@@ -204,11 +218,29 @@ There is also a helper script for manual verification:
 The project includes three levels of tests:
 
 - Domain tests
-  Verify the stream-based selection logic in isolation
-- Application tests
-  Verify the use case behavior without HTTP or database concerns
+
+  Verify the price selection logic in isolation, including:
+    - overlapping price ranges
+    - priority resolution
+    - tie-breaking using startDate
+    - boundary conditions (inclusive dates)
+    - no-match scenarios
+
+- Application tests 
+
+    Verify the use case behavior:
+    - correct mapping from persistence results
+    - exception handling when no price is found
+
 - REST integration tests
-  Verify the endpoint using the H2 in-memory dataset
+
+    Verify the full HTTP flow using H2:
+    - expected business scenarios
+    - request validation errors (400)
+    - missing parameters
+    - invalid parameter types
+    - not found scenarios (404)
+    - error response structure
 
 Relevant test classes:
 
@@ -218,15 +250,41 @@ Relevant test classes:
 
 ## Validation And Error Handling
 
-- Request parameter validation is handled at controller level
-- A missing applicable price is translated to `404 Not Found`
-- Invalid request parameter formats are handled by Spring MVC and result in `400 Bad Request`
+Request validation is handled at controller level using Jakarta Bean Validation:
+
+- `applicationDate` must be present and follow ISO date format
+- `productId` and `brandId` must be positive numbers
+
+A global exception handler (`RestExceptionHandler`) translates exceptions into consistent HTTP responses:
+
+- `400 Bad Request`
+    - Missing parameters
+    - Invalid parameter types
+    - Validation errors
+- `404 Not Found`
+    - No applicable price found
+
+Error responses follow a structured format:
+
+```json
+{
+  "timestamp": "2026-01-01T10:00:00Z",
+  "status": 400,
+  "error": "Bad Request",
+  "message": "Request parameter validation failed",
+  "path": "/api/v1/prices",
+  "details": [
+    "productId must be greater than 0"
+  ]
+}
+```
 
 ## Assumptions
 
 - Price intervals are inclusive on both boundaries
 - Priority is the main conflict resolution rule
 - A deterministic secondary comparator by `startDate` is used in the selector implementation
+- Date filtering is partially delegated to the database for performance reasons
 
 ## Notes
 

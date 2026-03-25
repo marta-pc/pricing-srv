@@ -69,7 +69,7 @@ Flujo de una peticion:
 1. `PriceController` recibe la peticion HTTP.
 2. Se crea un `PriceQuery` a partir de los parametros de entrada.
 3. `GetApplicablePriceService` ejecuta el caso de uso.
-4. `LoadPricesPort` recupera los precios candidatos desde persistencia.
+4. `LoadPricesPort` recupera los precios candidatos desde persistencia, filtrando por producto, marca y rango de fechas.
 5. `ApplicablePriceSelector` aplica la regla de negocio:
    filtra por fecha y selecciona la fila con mayor prioridad.
 6. La respuesta se transforma a un DTO REST y se devuelve al cliente.
@@ -85,13 +85,23 @@ Clases principales:
 - Adaptador de persistencia:
   [PriceRepositoryAdapter.java](src/main/java/com/company/pricing_srv/infrastructure/out/persistence/adapter/PriceRepositoryAdapter.java)
 
-## Regla De Negocio
+## Estrategia de Filtrado de Datos
+
+Las responsabilidades de filtrado se dividen entre capas:
+
+- La base de datos reduce los precios candidatos usando producto, marca y rango de fechas
+- La capa de dominio aplica la regla de negocio para resolver conflictos (selección por prioridad)
+
+Este enfoque mantiene la lógica de negocio testeable e independiente de la persistencia, mientras mejora el rendimiento al reducir la cantidad de datos cargados en memoria.
+
+## Regla de Negocio
 
 La regla de seleccion es:
 
-- Una fila de precio aplica cuando `applicationDate` esta entre `startDate` y `endDate`
-- `startDate` y `endDate` se tratan como inclusivos
-- Si mas de una fila aplica, se devuelve la de mayor `priority`
+- Una fila de precio es aplicable cuando applicationDate está entre startDate y endDate
+- startDate y endDate se consideran inclusivos
+- Si más de una fila es aplicable, se devuelve la de mayor priority
+- Si varias filas tienen la misma prioridad, se selecciona la más reciente (por startDate)
 
 ## Dataset
 
@@ -100,7 +110,7 @@ La aplicacion arranca con un dataset en memoria cargado desde:
 - [schema.sql](src/main/resources/schema.sql)
 - [data.sql](src/main/resources/data.sql)
 
-La muestra cargada contiene 4 filas de precio para:
+La muestra cargada contiene múltiples filas de precio, incluyendo escenarios de solapamiento para validar la resolución por prioridad.
 
 - `brandId = 1`
 - `productId = 35455`
@@ -134,6 +144,8 @@ Respuesta de ejemplo:
 ```
 
 Si no existe un precio aplicable, el servicio devuelve `404 Not Found`.
+
+Las peticiones inválidas devuelven 400 Bad Request con una respuesta de error estructurada y consistente.
 
 ## Como Ejecutarlo
 
@@ -202,12 +214,31 @@ Tambien hay un script de apoyo para validacion manual:
 
 El proyecto incluye tres niveles de tests:
 
-- Tests de dominio
-  Verifican la logica de seleccion basada en streams de forma aislada
-- Tests de aplicacion
-  Verifican el comportamiento del caso de uso sin HTTP ni base de datos
-- Tests de integracion REST
-  Verifican el endpoint usando el dataset de H2 en memoria
+
+- Tests de dominio 
+
+    Verifican la lógica de selección en aislamiento, incluyendo:
+  - solapamiento de rangos
+  - resolución por prioridad
+  - desempate usando startDate
+  - condiciones de borde (fechas inclusivas)
+  - escenarios sin resultado
+
+- Tests de aplicación 
+
+    Verifican el comportamiento del caso de uso:
+    - mapeo correcto de resultados
+  - manejo de excepciones cuando no hay precio
+
+- Tests de integración REST
+
+    Verifican el flujo HTTP completo usando H2:
+    - escenarios de negocio esperados
+  - errores de validación (400)
+  - parámetros ausentes
+  - tipos inválidos
+  - scenarios sin resultado (404)
+  - estructura de errores
 
 Clases de test relevantes:
 
@@ -217,15 +248,39 @@ Clases de test relevantes:
 
 ## Validacion Y Gestion De Errores
 
-- La validacion de parametros se realiza a nivel de controlador
-- Cuando no existe precio aplicable, se devuelve `404 Not Found`
-- Cuando el formato de los parametros es invalido, Spring MVC devuelve `400 Bad Request`
+La validación de peticiones se gestiona a nivel de controlador usando Jakarta Bean Validation:
+- `applicationDate` debe estar presente y seguir formato ISO
+- `productId` and `brandId`debe estar presente y seguir formato ISO
+
+Un manejador global de excepciones ('RestExceptionHandler') traduce las excepciones en respuestas HTTP consistentes:
+- `400 Bad Request`
+    - Parámetros ausentes
+    - Tipos de parámetros inválidos
+    - Errores de validación
+- `404 Not Found`
+    - No se encuentra el precio aplicable
+
+Las respuestas de error siguen un formato estructurado:
+
+```json
+{
+  "timestamp": "2026-01-01T10:00:00Z",
+  "status": 400,
+  "error": "Bad Request",
+  "message": "Request parameter validation failed",
+  "path": "/api/v1/prices",
+  "details": [
+    "productId must be greater than 0"
+  ]
+}
+```
 
 ## Supuestos
 
 - Los intervalos de precio son inclusivos en ambos extremos
 - La prioridad es la regla principal de resolucion de conflictos
 - El selector usa `startDate` como comparador secundario para mantener un comportamiento determinista
+- El filtrado por fecha se delega parcialmente a la base de datos por rendimiento
 
 ## Notas
 
