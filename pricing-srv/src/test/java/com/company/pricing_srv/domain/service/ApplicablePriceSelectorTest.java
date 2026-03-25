@@ -4,7 +4,6 @@ import com.company.pricing_srv.domain.model.Price;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.CsvSource;
-import org.junit.jupiter.params.provider.ValueSource;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
@@ -17,7 +16,7 @@ class ApplicablePriceSelectorTest {
     @Test
     void shouldSelectHighestPriorityWhenMultiplePricesOverlap() {
         Price selectedPrice = ApplicablePriceSelector
-                .select(overlappingPrices(), LocalDateTime.parse("2020-06-14T16:30:00"))
+                .select(overlappingPrices())
                 .orElseThrow();
 
         assertThat(selectedPrice.priceList()).isEqualTo(3);
@@ -26,32 +25,25 @@ class ApplicablePriceSelectorTest {
     @Test
     void shouldSelectMostRecentWhenSamePriority() {
         Price selectedPrice = ApplicablePriceSelector
-                .select(overlappingPricesWithSamePriority(), LocalDateTime.parse("2020-06-14T17:30:00"))
+                .select(overlappingPricesWithSamePriority())
                 .orElseThrow();
 
         assertThat(selectedPrice.priceList()).isEqualTo(4);
     }
 
-    @ParameterizedTest(name = "[{index}] boundary {0} -> price list {1}")
+    @ParameterizedTest(name = "[{index}] single price list {1}")
     @CsvSource({
-            "2020-06-14T00:00:00,1",
-            "2020-06-14T18:30:00,1"
+            "1"
     })
-    void shouldTreatStartAndEndDatesAsInclusive(String applicationDate, int expectedPriceList) {
-        Price selectedPrice = ApplicablePriceSelector.select(singlePrice(), LocalDateTime.parse(applicationDate)).orElseThrow();
-
+    void shouldReturnSinglePrice(int expectedPriceList) {
+        Price selectedPrice = ApplicablePriceSelector.select(singlePrice()).orElseThrow();
         assertThat(selectedPrice.priceList()).isEqualTo(expectedPriceList);
     }
 
-    @ParameterizedTest(name = "[{index}] no match at {0}")
-    @ValueSource(strings = {
-            "2020-06-13T23:59:59",
-            "2020-06-14T18:30:01"
-    })
-    void shouldReturnEmptyWhenNoPriceMatchesApplicationDate(String applicationDate) {
-        assertThat(ApplicablePriceSelector
-                .select(singlePrice(), LocalDateTime.parse(applicationDate)))
-                .isEmpty();
+    @Test
+    void shouldReturnEmptyWhenNoPriceProvided() {
+        List<Price> emptyList = List.of();
+        assertThat(ApplicablePriceSelector.select(emptyList)).isEmpty();
     }
 
     private List<Price> singlePrice() {
@@ -94,4 +86,3 @@ class ApplicablePriceSelectorTest {
         );
     }
 }
-

@@ -19,8 +19,7 @@ public class GetApplicablePriceService implements GetApplicablePriceUseCase {
     @Override
     public ApplicablePrice getApplicablePrice(PriceQuery query) {
         Price selectedPrice = ApplicablePriceSelector.select(
-                        loadPricesPort.findApplicablePrices(query.brandId(), query.productId(), query.applicationDate()),
-                        query.applicationDate()
+                        loadPricesPort.findApplicablePrices(query.brandId(), query.productId(), query.applicationDate())
                 )
                 .orElseThrow(() -> new PriceNotFoundException(query.brandId(), query.productId()));
 
