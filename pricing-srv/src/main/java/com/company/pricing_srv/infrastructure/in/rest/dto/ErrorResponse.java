@@ -1,11 +1,14 @@
 package com.company.pricing_srv.infrastructure.in.rest.dto;
 
 import java.time.Instant;
+import java.util.List;
 
 public record ErrorResponse(
         Instant timestamp,
         int status,
         String error,
-        String message
+        String message,
+        String path,
+        List<String> details
 ) {
 }

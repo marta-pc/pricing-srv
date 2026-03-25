@@ -1,5 +1,6 @@
 package com.company.pricing_srv.infrastructure.in.rest.controller;
 
+import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.CsvSource;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -37,5 +38,58 @@ class PriceControllerTest {
                 .andExpect(jsonPath("$.priceList").value(expectedPriceList))
                 .andExpect(jsonPath("$.price").value(expectedPrice))
                 .andExpect(jsonPath("$.currency").value("EUR"));
+    }
+
+    @Test
+    void shouldReturnSpecificErrorWhenRequiredParameterIsMissing() throws Exception {
+        mockMvc.perform(get("/api/v1/prices")
+                        .param("productId", "35455")
+                        .param("brandId", "1"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.status").value(400))
+                .andExpect(jsonPath("$.error").value("Bad Request"))
+                .andExpect(jsonPath("$.message").value("Missing required request parameter"))
+                .andExpect(jsonPath("$.path").value("/api/v1/prices"))
+                .andExpect(jsonPath("$.details[0]").value("Parameter 'applicationDate' is required"));
+    }
+
+    @Test
+    void shouldReturnSpecificErrorWhenParameterTypeIsInvalid() throws Exception {
+        mockMvc.perform(get("/api/v1/prices")
+                        .param("applicationDate", "invalid-date")
+                        .param("productId", "35455")
+                        .param("brandId", "1"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.status").value(400))
+                .andExpect(jsonPath("$.error").value("Bad Request"))
+                .andExpect(jsonPath("$.message").value("Invalid request parameter type"))
+                .andExpect(jsonPath("$.path").value("/api/v1/prices"))
+                .andExpect(jsonPath("$.details[0]").value("Parameter 'applicationDate' has an invalid value 'invalid-date'"));
+    }
+
+    @Test
+    void shouldReturnSpecificErrorWhenParameterFailsValidation() throws Exception {
+        mockMvc.perform(get("/api/v1/prices")
+                        .param("applicationDate", "2020-06-14T16:00:00")
+                        .param("productId", "-1")
+                        .param("brandId", "1"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.status").value(400))
+                .andExpect(jsonPath("$.error").value("Bad Request"))
+                .andExpect(jsonPath("$.message").value("Request parameter validation failed"))
+                .andExpect(jsonPath("$.path").value("/api/v1/prices"))
+                .andExpect(jsonPath("$.details[0]").value("must be greater than 0"));
+    }
+
+    @Test
+    void shouldReturnNotFoundWhenNoApplicablePriceExists() throws Exception {
+        mockMvc.perform(get("/api/v1/prices")
+                        .param("applicationDate", "2021-01-01T00:00:00")
+                        .param("productId", "35455")
+                        .param("brandId", "1"))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.status").value(404))
+                .andExpect(jsonPath("$.error").value("Not Found"))
+                .andExpect(jsonPath("$.path").value("/api/v1/prices"));
     }
 }
