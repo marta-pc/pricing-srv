@@ -7,6 +7,7 @@ import com.company.pricing_srv.infrastructure.out.persistence.repository.PriceJp
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 
+import java.time.LocalDateTime;
 import java.util.List;
 
 @Component
@@ -16,8 +17,8 @@ public class PriceRepositoryAdapter implements LoadPricesPort {
     private final PriceJpaRepository priceJpaRepository;
 
     @Override
-    public List<Price> findByBrandIdAndProductId(Long brandId, Long productId) {
-        return priceJpaRepository.findByBrandIdAndProductId(brandId, productId).stream()
+    public List<Price> findApplicablePrices(Long brandId, Long productId, LocalDateTime applicationDate) {
+        return priceJpaRepository.findByBrandIdAndProductIdAndStartDateLessThanEqualAndEndDateGreaterThanEqual(brandId, productId, applicationDate, applicationDate).stream()
                 .map(PriceEntityMapper::toDomain)
                 .toList();
     }

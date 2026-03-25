@@ -10,8 +10,6 @@ import com.company.pricing_srv.domain.service.ApplicablePriceSelector;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 
-import java.util.List;
-
 @Service
 @RequiredArgsConstructor
 public class GetApplicablePriceService implements GetApplicablePriceUseCase {
@@ -20,9 +18,10 @@ public class GetApplicablePriceService implements GetApplicablePriceUseCase {
 
     @Override
     public ApplicablePrice getApplicablePrice(PriceQuery query) {
-        List<Price> candidatePrices = loadPricesPort.findByBrandIdAndProductId(query.brandId(), query.productId());
-
-        Price selectedPrice = ApplicablePriceSelector.select(candidatePrices, query.applicationDate())
+        Price selectedPrice = ApplicablePriceSelector.select(
+                        loadPricesPort.findApplicablePrices(query.brandId(), query.productId(), query.applicationDate()),
+                        query.applicationDate()
+                )
                 .orElseThrow(() -> new PriceNotFoundException(query.brandId(), query.productId()));
 
         return new ApplicablePrice(
